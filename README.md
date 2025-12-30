@@ -111,6 +111,11 @@ npm run dev
 
 ---
 
+
+## 🚀 Quick Start
+
+For setup and running instructions, see [QUICKSTART.md](./QUICKSTART.md).
+
 ## 📁 Project Structure
 
 ```
