@@ -79,12 +79,12 @@ Detect risky language in client communications:
 
 ### Installation
 
-1. **Install all dependencies:**
+1. **Install  dependencies:**
 ```bash
-npm run install:all
+npm install
 ```
 
-2. **Start development servers:**
+2. **Start development server:**
 ```bash
 npm run dev
 ```
@@ -92,22 +92,6 @@ npm run dev
 This will start:
 - Backend API on `http://localhost:3001`
 - Frontend on `http://localhost:3000`
-
-### Manual Setup (Alternative)
-
-**Backend:**
-```bash
-cd backend
-npm install
-npm run dev
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev
-```
 
 ---
 
