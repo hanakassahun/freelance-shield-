@@ -8,7 +8,7 @@ const db = getDb();
 // Generate contract
 router.post('/generate', (req, res) => {
   try {
-    const {
+    let {
       projectType,
       pricingModel,
       paymentSchedule,
@@ -17,39 +17,90 @@ router.post('/generate', (req, res) => {
       projectDescription
     } = req.body;
 
-    // Validate inputs
+    // ---- Basic Required Validation ----
     if (!projectType || !pricingModel || !paymentSchedule) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // ---- Type & Format Validation ----
+    if (typeof projectType !== 'string' ||
+      typeof pricingModel !== 'string' ||
+      typeof paymentSchedule !== 'string') {
+      return res.status(400).json({ error: 'Invalid field types' });
+    }
+
+    // ---- Sanitize Strings ----
+    clientName = typeof clientName === 'string' ? clientName.trim() : '';
+    projectDescription = typeof projectDescription === 'string'
+      ? projectDescription.trim()
+      : '';
+
+    // ---- Business Validation ----
+    if (!clientName || clientName.length < 2 || !/[a-zA-Z]/.test(clientName)) {
+      return res.status(400).json({
+        error: 'Client name must be at least 2 characters and contain letters'
+      });
+    }
+
+    if (!projectDescription ||
+      projectDescription.length < 10 ||
+      !/[a-zA-Z]/.test(projectDescription)) {
+      return res.status(400).json({
+        error: 'Project description must be meaningful (min 10 characters)'
+      });
+    }
+
+    // ---- Revision Limit Validation ----
+    revisionLimit = parseInt(revisionLimit);
+
+    if (isNaN(revisionLimit) || revisionLimit < 0 || revisionLimit > 20) {
+      return res.status(400).json({
+        error: 'Revision limit must be between 0 and 20'
+      });
+    }
+
+    // ---- Generate Contract ----
     const contract = generateContract({
       projectType,
       pricingModel,
       paymentSchedule,
-      revisionLimit: revisionLimit || 2,
-      clientName: clientName || 'Client',
-      projectDescription: projectDescription || 'Project work'
+      revisionLimit,
+      clientName,
+      projectDescription
     });
 
-    // Optionally save to database
-    const userId = 1; // For MVP, use default user
+    // ---- Save to DB (Optional) ----
+    const userId = 1;
     const clientId = req.body.clientId || null;
 
     if (clientId) {
       const stmt = db.prepare(`
-        INSERT INTO contracts (user_id, client_id, project_type, pricing_model, payment_schedule, revision_limit, content)
+        INSERT INTO contracts 
+        (user_id, client_id, project_type, pricing_model, payment_schedule, revision_limit, content)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
-      const result = stmt.run(userId, clientId, projectType, pricingModel, paymentSchedule, revisionLimit || 2, contract);
+
+      const result = stmt.run(
+        userId,
+        clientId,
+        projectType,
+        pricingModel,
+        paymentSchedule,
+        revisionLimit,
+        contract
+      );
+
       contract.id = result.lastInsertRowid;
     }
 
     res.json({ contract, success: true });
+
   } catch (error) {
     console.error('Contract generation error:', error);
     res.status(500).json({ error: 'Failed to generate contract' });
   }
 });
+
 
 // Get all contracts
 router.get('/', (req, res) => {
