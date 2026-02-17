@@ -15,6 +15,7 @@ export default function InvoiceTracker() {
     currency: 'USD'
   });
   const [loading, setLoading] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
     fetchInvoices();
@@ -39,14 +40,70 @@ export default function InvoiceTracker() {
     }
   };
 
+  const validateForm = () => {
+    const errors = {};
+
+    const amount = parseFloat(formData.amount);
+    const today = new Date();
+    const dueDate = new Date(formData.dueDate);
+
+    if (!formData.clientId) {
+      errors.clientId = "Client is required";
+    }
+
+    if (!formData.amount) {
+      errors.amount = "Amount is required";
+    } else if (isNaN(amount) || amount <= 0) {
+      errors.amount = "Amount must be greater than 0";
+    }
+
+    if (!formData.dueDate) {
+      errors.dueDate = "Due date is required";
+    } else if (dueDate < today.setHours(0, 0, 0, 0)) {
+      errors.dueDate = "Due date cannot be in the past";
+    }
+
+    if (formData.description && formData.description.trim().length < 5) {
+      errors.description = "Description must be at least 5 characters";
+    }
+
+    if (!["USD", "EUR", "GBP"].includes(formData.currency)) {
+      errors.currency = "Invalid currency selected";
+    }
+
+    return errors;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
+    setFormErrors({});
     setLoading(true);
 
     try {
-      await axios.post('/api/invoices', formData);
+      const cleanedData = {
+        ...formData,
+        amount: parseFloat(formData.amount),
+        description: formData.description.trim()
+      };
+
+      await axios.post('/api/invoices', cleanedData);
+
       setShowForm(false);
-      setFormData({ clientId: '', amount: '', dueDate: '', description: '', currency: 'USD' });
+      setFormData({
+        clientId: '',
+        amount: '',
+        dueDate: '',
+        description: '',
+        currency: 'USD'
+      });
+
       fetchInvoices();
     } catch (error) {
       console.error('Error creating invoice:', error);
@@ -133,16 +190,26 @@ export default function InvoiceTracker() {
                   Client *
                 </label>
                 <select
-                  required
                   value={formData.clientId}
-                  onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  onChange={(e) => {
+                    setFormData({ ...formData, clientId: e.target.value });
+                    setFormErrors(prev => ({ ...prev, clientId: '' }));
+                  }}
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${formErrors.clientId
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-primary-500'
+                    }`}
                 >
                   <option value="">Select client</option>
                   {clients.map(client => (
-                    <option key={client.id} value={client.id}>{client.name}</option>
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
                   ))}
                 </select>
+                {formErrors.clientId && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.clientId}</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -151,11 +218,19 @@ export default function InvoiceTracker() {
                 <input
                   type="number"
                   step="0.01"
-                  required
                   value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  onChange={(e) => {
+                    setFormData({ ...formData, amount: e.target.value });
+                    setFormErrors(prev => ({ ...prev, amount: '' }));
+                  }}
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${formErrors.amount
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-primary-500'
+                    }`}
                 />
+                {formErrors.amount && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.amount}</p>
+                )}
               </div>
             </div>
 
@@ -166,11 +241,19 @@ export default function InvoiceTracker() {
                 </label>
                 <input
                   type="date"
-                  required
                   value={formData.dueDate}
-                  onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  onChange={(e) => {
+                    setFormData({ ...formData, dueDate: e.target.value });
+                    setFormErrors(prev => ({ ...prev, dueDate: '' }));
+                  }}
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${formErrors.dueDate
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-primary-500'
+                    }`}
                 />
+                {formErrors.dueDate && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.dueDate}</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -178,13 +261,22 @@ export default function InvoiceTracker() {
                 </label>
                 <select
                   value={formData.currency}
-                  onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  onChange={(e) => {
+                    setFormData({ ...formData, currency: e.target.value });
+                    setFormErrors(prev => ({ ...prev, currency: '' }));
+                  }}
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${formErrors.currency
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-primary-500'
+                    }`}
                 >
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
                   <option value="GBP">GBP</option>
                 </select>
+                {formErrors.currency && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.currency}</p>
+                )}
               </div>
             </div>
 
@@ -194,12 +286,21 @@ export default function InvoiceTracker() {
               </label>
               <textarea
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, description: e.target.value });
+                  setFormErrors(prev => ({ ...prev, description: '' }));
+                }}
                 rows="3"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${formErrors.description
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-primary-500'
+                  }`}
               />
+              {formErrors.description && (
+                <p className="text-red-500 text-sm mt-1">{formErrors.description}</p>
+              )}
             </div>
-
+            
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -276,9 +377,8 @@ export default function InvoiceTracker() {
           invoices.map((invoice) => (
             <div
               key={invoice.id}
-              className={`bg-white rounded-lg shadow p-6 ${
-                isOverdue(invoice.due_date, invoice.status) ? 'border-l-4 border-red-500' : ''
-              }`}
+              className={`bg-white rounded-lg shadow p-6 ${isOverdue(invoice.due_date, invoice.status) ? 'border-l-4 border-red-500' : ''
+                }`}
             >
               <div className="flex justify-between items-start mb-4">
                 <div>
