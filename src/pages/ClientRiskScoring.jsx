@@ -12,6 +12,7 @@ export default function ClientRiskScoring() {
   });
   const [availableSignals, setAvailableSignals] = useState({});
   const [loading, setLoading] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
     fetchClients();
@@ -36,12 +37,57 @@ export default function ClientRiskScoring() {
     }
   };
 
+  const validateForm = () => {
+    const errors = {};
+
+    const name = formData.name.trim();
+    const email = formData.email.trim();
+    const notes = formData.notes.trim();
+
+    if (!name) {
+      errors.name = "Client name is required";
+    } else if (name.length < 2) {
+      errors.name = "Name must be at least 2 characters";
+    } else if (!/[a-zA-Z]/.test(name)) {
+      errors.name = "Name must contain letters";
+    }
+
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        errors.email = "Invalid email format";
+      }
+    }
+
+    if (notes && notes.length < 5) {
+      errors.notes = "Notes must be at least 5 characters";
+    }
+
+    return errors;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
+    setFormErrors({});
     setLoading(true);
 
     try {
-      await axios.post('/api/clients', formData);
+      const cleanedData = {
+        ...formData,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        notes: formData.notes.trim()
+      };
+
+      await axios.post('/api/clients', cleanedData);
+
       setShowForm(false);
       setFormData({ name: '', email: '', notes: '', riskSignals: [] });
       fetchClients();
@@ -52,6 +98,7 @@ export default function ClientRiskScoring() {
       setLoading(false);
     }
   };
+
 
   const toggleSignal = (signalType) => {
     setFormData(prev => {
@@ -124,11 +171,20 @@ export default function ClientRiskScoring() {
                 </label>
                 <input
                   type="text"
-                  required
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  onChange={(e) => {
+                    setFormData({ ...formData, name: e.target.value });
+                    setFormErrors(prev => ({ ...prev, name: '' }));
+                  }}
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${formErrors.name
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-primary-500'
+                    }`}
                 />
+                {formErrors.name && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.name}</p>
+                )}
+
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -137,9 +193,19 @@ export default function ClientRiskScoring() {
                 <input
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  onChange={(e) => {
+                    setFormData({ ...formData, email: e.target.value });
+                    setFormErrors(prev => ({ ...prev, email: '' }));
+                  }}
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${formErrors.email
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-primary-500'
+                    }`}
                 />
+                {formErrors.email && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.email}</p>
+                )}
+
               </div>
             </div>
 
@@ -149,10 +215,19 @@ export default function ClientRiskScoring() {
               </label>
               <textarea
                 value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, notes: e.target.value });
+                  setFormErrors(prev => ({ ...prev, notes: '' }));
+                }}
                 rows="3"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${formErrors.notes
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-primary-500'
+                  }`}
               />
+              {formErrors.notes && (
+                <p className="text-red-500 text-sm mt-1">{formErrors.notes}</p>
+              )}
             </div>
 
             <div>

@@ -48,17 +48,56 @@ Best regards`;
 // Create invoice
 router.post('/', (req, res) => {
   try {
-    const { clientId, amount, dueDate, description, currency } = req.body;
+    let { clientId, amount, dueDate, description, currency } = req.body;
 
+    // ---- Basic Type Validation ----
     if (!clientId || !amount || !dueDate) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const userId = 1; // MVP: default user
+    clientId = parseInt(clientId);
+    amount = parseFloat(amount);
+    description = typeof description === 'string' ? description.trim() : '';
+
+    if (isNaN(clientId)) {
+      return res.status(400).json({ error: 'Invalid client ID' });
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'Amount must be greater than 0' });
+    }
+
+    // ---- Due Date Validation ----
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const parsedDueDate = new Date(dueDate);
+
+    if (isNaN(parsedDueDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid due date format' });
+    }
+
+    if (parsedDueDate < today) {
+      return res.status(400).json({ error: 'Due date cannot be in the past' });
+    }
+
+    // ---- Currency Validation ----
+    const allowedCurrencies = ['USD', 'EUR', 'GBP'];
+    if (!allowedCurrencies.includes(currency)) {
+      return res.status(400).json({ error: 'Invalid currency selected' });
+    }
+
+    // ---- Check Client Exists ----
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
+    if (!client) {
+      return res.status(400).json({ error: 'Client not found' });
+    }
+
+    const userId = 1;
     const invoiceNumber = generateInvoiceNumber();
 
     const stmt = db.prepare(`
-      INSERT INTO invoices (user_id, client_id, invoice_number, amount, currency, due_date, description, status)
+      INSERT INTO invoices 
+      (user_id, client_id, invoice_number, amount, currency, due_date, description, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
     `);
 
@@ -67,18 +106,26 @@ router.post('/', (req, res) => {
       clientId,
       invoiceNumber,
       amount,
-      currency || 'USD',
+      currency,
       dueDate,
-      description || ''
+      description
     );
 
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
+    const invoice = db.prepare(`
+      SELECT i.*, c.name as client_name 
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.id = ?
+    `).get(result.lastInsertRowid);
+
     res.json(invoice);
+
   } catch (error) {
     console.error('Error creating invoice:', error);
     res.status(500).json({ error: 'Failed to create invoice' });
   }
 });
+
 
 // Get all invoices
 router.get('/', (req, res) => {

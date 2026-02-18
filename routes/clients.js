@@ -8,39 +8,101 @@ const db = getDb();
 // Create or update client with risk assessment
 router.post('/', (req, res) => {
   try {
-    const { name, email, notes, riskSignals } = req.body;
+    let { name, email, notes, riskSignals } = req.body;
 
+    // ---- Type Validation ----
+    if (typeof name !== 'string') {
+      return res.status(400).json({ error: 'Invalid name format' });
+    }
+
+    name = name.trim();
+    email = typeof email === 'string' ? email.trim() : '';
+    notes = typeof notes === 'string' ? notes.trim() : '';
+
+    // ---- Name Validation ----
     if (!name) {
       return res.status(400).json({ error: 'Client name is required' });
     }
 
-    const userId = 1; // MVP: default user
+    if (name.length < 2) {
+      return res.status(400).json({ error: 'Name must be at least 2 characters' });
+    }
+
+    if (!/[a-zA-Z]/.test(name)) {
+      return res.status(400).json({ error: 'Name must contain letters' });
+    }
+
+    // ---- Email Validation ----
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+    }
+
+    // ---- Notes Validation ----
+    if (notes && notes.length < 5) {
+      return res.status(400).json({ error: 'Notes must be at least 5 characters' });
+    }
+
+    // ---- Risk Signals Validation ----
+    if (riskSignals && !Array.isArray(riskSignals)) {
+      return res.status(400).json({ error: 'Invalid risk signals format' });
+    }
+
+    if (riskSignals) {
+      for (const signal of riskSignals) {
+        if (!signal.type || typeof signal.type !== 'string') {
+          return res.status(400).json({ error: 'Invalid risk signal structure' });
+        }
+      }
+    }
+
+    const userId = 1;
 
     // Calculate risk score
     const riskAssessment = calculateRiskScore(riskSignals || []);
 
-    // Insert or update client
-    const existingClient = db.prepare('SELECT * FROM clients WHERE name = ? AND user_id = ?').get(name, userId);
+    // Check existing client
+    const existingClient = db
+      .prepare('SELECT * FROM clients WHERE name = ? AND user_id = ?')
+      .get(name, userId);
 
     let clientId;
+
     if (existingClient) {
-      // Update existing client
       db.prepare(`
         UPDATE clients 
         SET risk_score = ?, risk_level = ?, notes = ?, email = ?
         WHERE id = ?
-      `).run(riskAssessment.score, riskAssessment.level, notes || '', email || '', existingClient.id);
+      `).run(
+        riskAssessment.score,
+        riskAssessment.level,
+        notes,
+        email,
+        existingClient.id
+      );
+
       clientId = existingClient.id;
 
-      // Clear old risk signals
-      db.prepare('DELETE FROM risk_signals WHERE client_id = ?').run(clientId);
+      db.prepare('DELETE FROM risk_signals WHERE client_id = ?')
+        .run(clientId);
+
     } else {
-      // Insert new client
       const stmt = db.prepare(`
         INSERT INTO clients (user_id, name, email, risk_score, risk_level, notes)
         VALUES (?, ?, ?, ?, ?, ?)
       `);
-      const result = stmt.run(userId, name, email || '', riskAssessment.score, riskAssessment.level, notes || '');
+
+      const result = stmt.run(
+        userId,
+        name,
+        email,
+        riskAssessment.score,
+        riskAssessment.level,
+        notes
+      );
+
       clientId = result.lastInsertRowid;
     }
 
@@ -61,27 +123,31 @@ router.post('/', (req, res) => {
       });
     }
 
-    // Fetch complete client data
-    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
-    const signals = db.prepare('SELECT * FROM risk_signals WHERE client_id = ?').all(clientId);
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?')
+      .get(clientId);
+
+    const signals = db.prepare('SELECT * FROM risk_signals WHERE client_id = ?')
+      .all(clientId);
 
     res.json({
       ...client,
       riskAssessment,
       signals
     });
+
   } catch (error) {
     console.error('Error creating/updating client:', error);
     res.status(500).json({ error: 'Failed to save client' });
   }
 });
 
+
 // Get all clients
 router.get('/', (req, res) => {
   try {
     const userId = 1; // MVP: default user
     const clients = db.prepare('SELECT * FROM clients WHERE user_id = ? ORDER BY created_at DESC').all(userId);
-    
+
     // Attach risk signals to each client
     const clientsWithSignals = clients.map(client => {
       const signals = db.prepare('SELECT * FROM risk_signals WHERE client_id = ?').all(client.id);
