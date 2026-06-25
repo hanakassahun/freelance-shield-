@@ -4,18 +4,33 @@
   "description": "A risk-aware toolkit for freelancers",
   "main": "index.js",
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "test:backend": "cd backend && npm test",
-    "test": "npm run test:backend",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+      "dev": "concurrently \"node server.js\" \"vite\"",
+      "server": "node server.js",
+      "client": "vite",
+      "build": "vite build",
+      "preview": "vite preview"
   },
   "keywords": ["freelance", "risk-management", "contracts", "invoicing"],
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "@tailwindcss/postcss" : "^4.1.18",
+    "@vitejs/plugin-react": "5.1.4",
+    "autoprefixer":"10.4.24",
+    "postcss": "^8.5.6",
+    "tailwindcss" : "^3.4.4",
+    "vite":"^7.3.1"
+  },
+  "dependencies": {
+    "axios": "^1.13.5",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.0",
+    "sqlite3": "^5.1.7"
   }
 }
 
