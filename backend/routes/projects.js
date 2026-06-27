@@ -1,11 +1,12 @@
 import express from 'express';
-import { getDb } from '../db/database.js';
+import { getDb, models, isOrmEnabled } from '../db/index.js';
 
 const router = express.Router();
 const db = getDb();
+const { Client, Project, Milestone, TimeEntry, ScopeChange } = models;
 
 // Create project
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { clientId, name, description, startDate, endDate, budget, status, projectType } = req.body;
 
@@ -14,6 +15,23 @@ router.post('/', (req, res) => {
     }
 
     const userId = 1; // MVP: default user
+
+    if (isOrmEnabled()) {
+      const project = await Project.create({
+        userId,
+        clientId,
+        name,
+        description: description || '',
+        startDate: startDate || null,
+        endDate: endDate || null,
+        budget: budget ?? 0,
+        status: status || 'planning',
+        projectType: projectType || 'other',
+        createdAt: new Date().toISOString()
+      });
+
+      return res.json(project);
+    }
 
     const stmt = db.prepare(`
       INSERT INTO projects (user_id, client_id, name, description, start_date, end_date, budget, status, project_type, created_at)
@@ -42,9 +60,39 @@ router.post('/', (req, res) => {
 });
 
 // Get all projects
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const userId = 1;
+
+    if (isOrmEnabled()) {
+      const projects = await Project.findAll({
+        where: { userId },
+        include: [
+          { model: Client, attributes: ['name'] },
+          { model: Milestone },
+          { model: TimeEntry }
+        ],
+        order: [['createdAt', 'DESC']]
+      });
+
+      const result = projects.map(project => {
+        const data = project.toJSON();
+        const milestones = (data.Milestones || []).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+        const timeEntries = data.TimeEntries || [];
+        const totalHours = timeEntries.reduce((sum, entry) => sum + (entry.hours || 0), 0);
+
+        return {
+          ...data,
+          client_name: project.Client?.name || null,
+          milestones,
+          totalHours,
+          timeEntryCount: timeEntries.length
+        };
+      });
+
+      return res.json(result);
+    }
+
     const projects = db.prepare(`
       SELECT p.*, c.name as client_name 
       FROM projects p
@@ -53,7 +101,6 @@ router.get('/', (req, res) => {
       ORDER BY p.created_at DESC
     `).all(userId);
 
-    // Attach milestones and time entries
     const projectsWithDetails = projects.map(project => {
       const milestones = db.prepare('SELECT * FROM milestones WHERE project_id = ? ORDER BY due_date').all(project.id);
       const timeEntries = db.prepare('SELECT * FROM time_entries WHERE project_id = ?').all(project.id);
@@ -75,8 +122,29 @@ router.get('/', (req, res) => {
 });
 
 // Get project by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
+    if (isOrmEnabled()) {
+      const project = await Project.findByPk(req.params.id, {
+        include: [
+          { model: Client, attributes: ['name'] },
+          { model: Milestone },
+          { model: TimeEntry },
+          { model: ScopeChange }
+        ]
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const data = project.toJSON();
+      return res.json({
+        ...data,
+        client_name: project.Client?.name || null
+      });
+    }
+
     const project = db.prepare(`
       SELECT p.*, c.name as client_name 
       FROM projects p
@@ -105,10 +173,29 @@ router.get('/:id', (req, res) => {
 });
 
 // Update project
-router.patch('/:id', (req, res) => {
+router.patch('/:id', async (req, res) => {
   try {
     const { name, description, startDate, endDate, budget, status, projectType } = req.body;
-    
+
+    if (isOrmEnabled()) {
+      const project = await Project.findByPk(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const updateData = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (startDate !== undefined) updateData.startDate = startDate;
+      if (endDate !== undefined) updateData.endDate = endDate;
+      if (budget !== undefined) updateData.budget = budget;
+      if (status !== undefined) updateData.status = status;
+      if (projectType !== undefined) updateData.projectType = projectType;
+
+      await project.update(updateData);
+      return res.json(project);
+    }
+
     const updates = {};
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
@@ -123,10 +210,8 @@ router.patch('/:id', (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Update fields
     Object.keys(updates).forEach(key => {
-      const sqlKey = key === 'startDate' ? 'start_date' : key === 'endDate' ? 'end_date' : key === 'projectType' ? 'project_type' : key;
-      db.prepare(`UPDATE projects SET ${sqlKey} = ? WHERE id = ?`).run(updates[key], req.params.id);
+      db.prepare(`UPDATE projects SET ${key} = ? WHERE id = ?`).run(updates[key], req.params.id);
     });
 
     const updated = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
@@ -138,8 +223,16 @@ router.patch('/:id', (req, res) => {
 });
 
 // Delete project
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
+    if (isOrmEnabled()) {
+      await Milestone.destroy({ where: { projectId: req.params.id } });
+      await TimeEntry.destroy({ where: { projectId: req.params.id } });
+      await ScopeChange.destroy({ where: { projectId: req.params.id } });
+      await Project.destroy({ where: { id: req.params.id } });
+      return res.json({ success: true });
+    }
+
     db.prepare('DELETE FROM milestones WHERE project_id = ?').run(req.params.id);
     db.prepare('DELETE FROM time_entries WHERE project_id = ?').run(req.params.id);
     db.prepare('DELETE FROM scope_changes WHERE project_id = ?').run(req.params.id);
@@ -152,12 +245,24 @@ router.delete('/:id', (req, res) => {
 });
 
 // Create milestone
-router.post('/:id/milestones', (req, res) => {
+router.post('/:id/milestones', async (req, res) => {
   try {
     const { name, description, dueDate, status } = req.body;
 
     if (!name || !dueDate) {
       return res.status(400).json({ error: 'Name and due date are required' });
+    }
+
+    if (isOrmEnabled()) {
+      const milestone = await Milestone.create({
+        projectId: req.params.id,
+        name,
+        description: description || '',
+        dueDate,
+        status: status || 'pending',
+        createdAt: new Date().toISOString()
+      });
+      return res.json(milestone);
     }
 
     const stmt = db.prepare(`
@@ -183,9 +288,25 @@ router.post('/:id/milestones', (req, res) => {
 });
 
 // Update milestone
-router.patch('/milestones/:milestoneId', (req, res) => {
+router.patch('/milestones/:milestoneId', async (req, res) => {
   try {
     const { name, description, dueDate, status } = req.body;
+
+    if (isOrmEnabled()) {
+      const milestone = await Milestone.findByPk(req.params.milestoneId);
+      if (!milestone) {
+        return res.status(404).json({ error: 'Milestone not found' });
+      }
+
+      const updateData = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (dueDate !== undefined) updateData.dueDate = dueDate;
+      if (status !== undefined) updateData.status = status;
+
+      await milestone.update(updateData);
+      return res.json(milestone);
+    }
 
     const milestone = db.prepare('SELECT * FROM milestones WHERE id = ?').get(req.params.milestoneId);
     if (!milestone) {
@@ -206,8 +327,13 @@ router.patch('/milestones/:milestoneId', (req, res) => {
 });
 
 // Delete milestone
-router.delete('/milestones/:milestoneId', (req, res) => {
+router.delete('/milestones/:milestoneId', async (req, res) => {
   try {
+    if (isOrmEnabled()) {
+      await Milestone.destroy({ where: { id: req.params.milestoneId } });
+      return res.json({ success: true });
+    }
+
     db.prepare('DELETE FROM milestones WHERE id = ?').run(req.params.milestoneId);
     res.json({ success: true });
   } catch (error) {

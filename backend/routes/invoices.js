@@ -1,8 +1,9 @@
 import express from 'express';
-import { getDb } from '../db/database.js';
+import { getDb, models, isOrmEnabled } from '../db/index.js';
 
 const router = express.Router();
 const db = getDb();
+const { Invoice, Client } = models;
 
 // Generate invoice number
 function generateInvoiceNumber() {
@@ -46,7 +47,7 @@ Best regards`;
 }
 
 // Create invoice
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { clientId, amount, dueDate, description, currency } = req.body;
 
@@ -56,6 +57,28 @@ router.post('/', (req, res) => {
 
     const userId = 1; // MVP: default user
     const invoiceNumber = generateInvoiceNumber();
+
+    if (isOrmEnabled()) {
+      const created = await Invoice.create({
+        userId,
+        clientId,
+        invoiceNumber,
+        amount,
+        currency: currency || 'USD',
+        dueDate,
+        description: description || '',
+        status: 'pending'
+      });
+
+      const invoice = await Invoice.findByPk(created.id, {
+        include: { model: Client, attributes: ['name'] }
+      });
+
+      return res.json({
+        ...invoice.toJSON(),
+        client_name: invoice.Client?.name || null
+      });
+    }
 
     const stmt = db.prepare(`
       INSERT INTO invoices (user_id, client_id, invoice_number, amount, currency, due_date, description, status)
@@ -81,9 +104,23 @@ router.post('/', (req, res) => {
 });
 
 // Get all invoices
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const userId = 1; // MVP: default user
+
+    if (isOrmEnabled()) {
+      const invoices = await Invoice.findAll({
+        where: { userId },
+        include: { model: Client, attributes: ['name'] },
+        order: [['dueDate', 'DESC']]
+      });
+
+      return res.json(invoices.map(invoice => ({
+        ...invoice.toJSON(),
+        client_name: invoice.Client?.name || null
+      })));
+    }
+
     const invoices = db.prepare(`
       SELECT i.*, c.name as client_name 
       FROM invoices i
@@ -100,8 +137,22 @@ router.get('/', (req, res) => {
 });
 
 // Get invoice by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
+    if (isOrmEnabled()) {
+      const invoice = await Invoice.findByPk(req.params.id, {
+        include: { model: Client, attributes: ['name'] }
+      });
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+
+      return res.json({
+        ...invoice.toJSON(),
+        client_name: invoice.Client?.name || null
+      });
+    }
+
     const invoice = db.prepare(`
       SELECT i.*, c.name as client_name 
       FROM invoices i
@@ -121,7 +172,7 @@ router.get('/:id', (req, res) => {
 });
 
 // Update invoice status
-router.patch('/:id/status', (req, res) => {
+router.patch('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
     const validStatuses = ['pending', 'paid', 'overdue', 'cancelled'];
@@ -130,7 +181,21 @@ router.patch('/:id/status', (req, res) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    // If status is being set to 'paid', also set paid_date
+    if (isOrmEnabled()) {
+      const updateData = { status };
+      if (status === 'paid') {
+        updateData.paidDate = new Date().toISOString().split('T')[0];
+      }
+      await Invoice.update(updateData, { where: { id: req.params.id } });
+      const invoice = await Invoice.findByPk(req.params.id, {
+        include: { model: Client, attributes: ['name'] }
+      });
+      return res.json({
+        ...invoice.toJSON(),
+        client_name: invoice.Client?.name || null
+      });
+    }
+
     if (status === 'paid') {
       db.prepare('UPDATE invoices SET status = ?, paid_date = ? WHERE id = ?').run(
         status,
@@ -151,9 +216,25 @@ router.patch('/:id/status', (req, res) => {
 });
 
 // Get reminder text
-router.get('/:id/reminder', (req, res) => {
+router.get('/:id/reminder', async (req, res) => {
   try {
     const tone = req.query.tone || 'polite';
+
+    if (isOrmEnabled()) {
+      const invoice = await Invoice.findByPk(req.params.id, {
+        include: { model: Client, attributes: ['name'] }
+      });
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      const payload = {
+        ...invoice.toJSON(),
+        client_name: invoice.Client?.name || null
+      };
+      const reminder = generateReminder(payload, tone);
+      return res.json({ reminder, tone });
+    }
+
     const invoice = db.prepare(`
       SELECT i.*, c.name as client_name 
       FROM invoices i
@@ -174,8 +255,13 @@ router.get('/:id/reminder', (req, res) => {
 });
 
 // Delete invoice
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
+    if (isOrmEnabled()) {
+      await Invoice.destroy({ where: { id: req.params.id } });
+      return res.json({ success: true });
+    }
+
     db.prepare('DELETE FROM invoices WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (error) {

@@ -1,12 +1,13 @@
 import express from 'express';
 import { generateContract, createContractPdfBuffer } from '../services/contractGenerator.js';
-import { getDb } from '../db/database.js';
+import { getDb, models, isOrmEnabled } from '../db/index.js';
 
 const router = express.Router();
 const db = getDb();
+const { Contract } = models;
 
 // Generate contract
-router.post('/generate', (req, res) => {
+router.post('/generate', async (req, res) => {
   try {
     const {
       projectType,
@@ -36,12 +37,25 @@ router.post('/generate', (req, res) => {
     const clientId = req.body.clientId || null;
 
     if (clientId) {
-      const stmt = db.prepare(`
-        INSERT INTO contracts (user_id, client_id, project_type, pricing_model, payment_schedule, revision_limit, content)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-      const result = stmt.run(userId, clientId, projectType, pricingModel, paymentSchedule, revisionLimit || 2, contract);
-      contract.id = result.lastInsertRowid;
+      if (isOrmEnabled()) {
+        const created = await Contract.create({
+          userId,
+          clientId,
+          projectType,
+          pricingModel,
+          paymentSchedule,
+          revisionLimit: revisionLimit || 2,
+          content: contract
+        });
+        contract.id = created.id;
+      } else {
+        const stmt = db.prepare(`
+          INSERT INTO contracts (user_id, client_id, project_type, pricing_model, payment_schedule, revision_limit, content)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        const result = stmt.run(userId, clientId, projectType, pricingModel, paymentSchedule, revisionLimit || 2, contract);
+        contract.id = result.lastInsertRowid;
+      }
     }
 
     res.json({ contract, success: true });
@@ -92,8 +106,13 @@ router.post('/generate-pdf', async (req, res) => {
 });
 
 // Get all contracts
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
+    if (isOrmEnabled()) {
+      const contracts = await Contract.findAll({ order: [['createdAt', 'DESC']] });
+      return res.json(contracts);
+    }
+
     const contracts = db.prepare('SELECT * FROM contracts ORDER BY created_at DESC').all();
     res.json(contracts);
   } catch (error) {
@@ -103,8 +122,16 @@ router.get('/', (req, res) => {
 });
 
 // Get contract by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
+    if (isOrmEnabled()) {
+      const contract = await Contract.findByPk(req.params.id);
+      if (!contract) {
+        return res.status(404).json({ error: 'Contract not found' });
+      }
+      return res.json(contract);
+    }
+
     const contract = db.prepare('SELECT * FROM contracts WHERE id = ?').get(req.params.id);
     if (!contract) {
       return res.status(404).json({ error: 'Contract not found' });
