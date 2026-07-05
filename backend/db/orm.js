@@ -60,6 +60,7 @@ export const Invoice = sequelize.define('Invoice', {
   paidDate: { type: DataTypes.DATE, allowNull: true },
   description: { type: DataTypes.TEXT, allowNull: true },
   status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'pending' },
+  escalationStage: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
 }, {
   tableName: 'invoices',

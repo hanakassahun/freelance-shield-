@@ -1,6 +1,30 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
+const ESCALATION_STEPS = [
+  {
+    key: 'day1',
+    label: 'Day 1',
+    title: 'Friendly',
+    description: 'Just checking in on invoice',
+    tone: 'polite'
+  },
+  {
+    key: 'day7',
+    label: 'Day 7',
+    title: 'Professional',
+    description: 'Reminder that payment is past due',
+    tone: 'firm'
+  },
+  {
+    key: 'day14',
+    label: 'Day 14',
+    title: 'Firm + Legal',
+    description: 'Reference late fees and contract terms',
+    tone: 'firm'
+  }
+];
+
 export default function InvoiceTracker() {
   const [invoices, setInvoices] = useState([]);
   const [clients, setClients] = useState([]);
@@ -15,6 +39,7 @@ export default function InvoiceTracker() {
     currency: 'USD'
   });
   const [loading, setLoading] = useState(false);
+  const [escalationPreview, setEscalationPreview] = useState(null);
 
   useEffect(() => {
     fetchInvoices();
@@ -70,9 +95,45 @@ export default function InvoiceTracker() {
       const response = await axios.get(`/api/invoices/${invoice.id}/reminder?tone=${tone}`);
       setReminderText(response.data.reminder);
       setSelectedInvoice(invoice);
+      fetchInvoices();
     } catch (error) {
       console.error('Error generating reminder:', error);
     }
+  };
+
+  const getEscalationStage = (invoice) => {
+    if (typeof invoice?.escalationStage === 'number') {
+      return Math.min(invoice.escalationStage, 2);
+    }
+
+    if (!invoice?.due_date) return 0;
+
+    const dueDate = new Date(invoice.due_date);
+    const today = new Date();
+    const daysLate = Math.max(0, Math.floor((today - dueDate) / (1000 * 60 * 60 * 24)));
+
+    if (daysLate >= 14) return 2;
+    if (daysLate >= 7) return 1;
+    if (daysLate >= 1) return 0;
+    return 0;
+  };
+
+  const getEscalationPreview = (invoice) => {
+    const stageIndex = getEscalationStage(invoice);
+    const currentStage = ESCALATION_STEPS[stageIndex];
+
+    const messages = [
+      `Day 1: Just checking in on invoice #${invoice.invoice_number}...`,
+      `Day 7: This is a reminder that payment is past due for invoice #${invoice.invoice_number}...`,
+      `Day 14: Per section 4 of our signed contract, late fees are accumulating for invoice #${invoice.invoice_number}...`
+    ];
+
+    setEscalationPreview({
+      invoice,
+      currentStage,
+      messages,
+      stageIndex
+    });
   };
 
   const getStatusBadge = (status) => {
@@ -223,6 +284,56 @@ export default function InvoiceTracker() {
         </div>
       )}
 
+      {escalationPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Escalation Ladder</h3>
+              <button
+                onClick={() => setEscalationPreview(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-gray-200 p-4 bg-gray-50">
+              <p className="text-sm font-semibold text-gray-900">
+                {escalationPreview.invoice?.client_name || 'Client'} — {escalationPreview.currentStage?.title}
+              </p>
+              <p className="text-sm text-gray-600 mt-1">
+                {escalationPreview.currentStage?.description}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {ESCALATION_STEPS.map((step, index) => {
+                const isActive = index === escalationPreview.stageIndex;
+                const isComplete = index < escalationPreview.stageIndex;
+                return (
+                  <div key={step.key} className={`rounded-lg border p-3 ${isActive ? 'border-primary-500 bg-primary-50' : isComplete ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{step.label} — {step.title}</p>
+                        <p className="text-xs text-gray-600">{step.description}</p>
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded ${isActive ? 'bg-primary-600 text-white' : isComplete ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                        {isComplete ? 'Done' : isActive ? 'Current' : 'Queued'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+              <p className="font-semibold mb-2">Suggested message</p>
+              <p>{escalationPreview.messages[escalationPreview.stageIndex]}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reminder Modal */}
       {selectedInvoice && reminderText && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -291,6 +402,9 @@ export default function InvoiceTracker() {
                 </div>
                 <div className="flex items-center gap-2">
                   {getStatusBadge(invoice.status)}
+                  <span className="px-2 py-1 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                    Stage {getEscalationStage(invoice) + 1}/3
+                  </span>
                   <button
                     onClick={() => handleDelete(invoice.id)}
                     className="text-red-600 hover:text-red-800 text-sm"
@@ -324,7 +438,7 @@ export default function InvoiceTracker() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Reminders</p>
-                  <div className="flex gap-2 mt-1">
+                  <div className="flex flex-wrap gap-2 mt-1">
                     <button
                       onClick={() => handleGenerateReminder(invoice, 'polite')}
                       className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
@@ -336,6 +450,12 @@ export default function InvoiceTracker() {
                       className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded hover:bg-orange-200"
                     >
                       Firm
+                    </button>
+                    <button
+                      onClick={() => getEscalationPreview(invoice)}
+                      className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
+                    >
+                      Escalation Ladder
                     </button>
                   </div>
                 </div>

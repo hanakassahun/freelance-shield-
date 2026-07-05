@@ -13,13 +13,13 @@ function generateInvoiceNumber() {
 
 // Generate reminder text
 function generateReminder(invoice, tone = 'polite') {
-  const dueDate = new Date(invoice.due_date).toLocaleDateString('en-US', {
+  const dueDate = new Date(invoice.due_date || invoice.dueDate).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   });
 
-  const daysOverdue = Math.floor((new Date() - new Date(invoice.due_date)) / (1000 * 60 * 60 * 24));
+  const daysOverdue = Math.floor((new Date() - new Date(invoice.due_date || invoice.dueDate)) / (1000 * 60 * 60 * 24));
 
   if (tone === 'polite') {
     return `Hi ${invoice.client_name || 'there'},
@@ -67,7 +67,8 @@ router.post('/', async (req, res) => {
         currency: currency || 'USD',
         dueDate,
         description: description || '',
-        status: 'pending'
+        status: 'pending',
+        escalationStage: 0
       });
 
       const invoice = await Invoice.findByPk(created.id, {
@@ -215,7 +216,7 @@ router.patch('/:id/status', async (req, res) => {
   }
 });
 
-// Get reminder text
+// Advance escalation stage and get reminder text
 router.get('/:id/reminder', async (req, res) => {
   try {
     const tone = req.query.tone || 'polite';
@@ -227,12 +228,17 @@ router.get('/:id/reminder', async (req, res) => {
       if (!invoice) {
         return res.status(404).json({ error: 'Invoice not found' });
       }
+
+      const nextStage = Math.min((invoice.escalationStage || 0) + 1, 2);
+      await Invoice.update({ escalationStage: nextStage }, { where: { id: req.params.id } });
+
       const payload = {
         ...invoice.toJSON(),
-        client_name: invoice.Client?.name || null
+        client_name: invoice.Client?.name || null,
+        escalationStage: nextStage
       };
       const reminder = generateReminder(payload, tone);
-      return res.json({ reminder, tone });
+      return res.json({ reminder, tone, escalationStage: nextStage });
     }
 
     const invoice = db.prepare(`
