@@ -12,18 +12,31 @@ const RISK_SIGNALS = {
   communication_issues: { weight: 10, description: 'Poor communication or unprofessional behavior' }
 };
 
-export function calculateRiskScore(signals) {
+export function calculateRiskScore(signals, context = {}) {
   let totalScore = 0;
   const explanations = [];
+  const hasHighRiskCommunication = signals.some(signal =>
+    signal.type === 'communication_issues' && /high|severe|risk|unprofessional|aggressive/i.test(signal.details || '')
+  );
 
   signals.forEach(signal => {
     if (RISK_SIGNALS[signal.type]) {
       const signalData = RISK_SIGNALS[signal.type];
-      totalScore += signalData.weight;
+      let adjustedWeight = signalData.weight;
+
+      if (
+        hasHighRiskCommunication &&
+        context.upfrontDepositPaid === true &&
+        context.depositPercent === 100
+      ) {
+        adjustedWeight = Math.max(0, Math.round(signalData.weight * 0.5));
+      }
+
+      totalScore += adjustedWeight;
       explanations.push({
         type: signal.type,
         description: signalData.description,
-        weight: signalData.weight,
+        weight: adjustedWeight,
         details: signal.details || ''
       });
     }
@@ -35,7 +48,7 @@ export function calculateRiskScore(signals) {
   // Determine risk level
   let riskLevel = 'low';
   let badge = '🟢';
-  
+
   if (totalScore >= 70) {
     riskLevel = 'high';
     badge = '🔴';

@@ -55,4 +55,18 @@ describe('Risk scoring engine', () => {
     expect(result.level).toBe('high');
     expect(result.badge).toBe('🔴');
   });
+
+  it('reduces severity when a communication flag is paired with a fully paid upfront deposit', () => {
+    const result = calculateRiskScore(
+      [
+        { type: 'requests_unpaid_work' },
+        { type: 'communication_issues', details: 'High-risk communication' }
+      ],
+      { upfrontDepositPaid: true, depositPercent: 100 }
+    );
+
+    expect(result.score).toBeLessThan(40);
+    expect(result.level).toBe('low');
+    expect(result.badge).toBe('🟢');
+  });
 });

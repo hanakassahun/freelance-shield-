@@ -7,7 +7,7 @@ const db = getDb();
 const { Client, RiskSignal } = models;
 
 // Create or update client with risk assessment
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name, email, notes, riskSignals } = req.body;
 
@@ -18,7 +18,11 @@ router.post('/', (req, res) => {
     const userId = 1; // MVP: default user
 
     // Calculate risk score
-    const riskAssessment = calculateRiskScore(riskSignals || []);
+    const riskAssessment = calculateRiskScore(riskSignals || [], {
+      upfrontDepositPaid: req.body.upfrontDepositPaid,
+      depositPercent: req.body.depositPercent,
+      communicationRiskLevel: req.body.communicationRiskLevel
+    });
 
     let clientId;
     let clientRecord;
