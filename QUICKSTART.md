@@ -57,6 +57,15 @@ npm run dev
    - Paste client messages
    - See detected risky language
 
+## Quick Test Snippet
+For an instant demo, paste this message into the Red Flag Detector page:
+
+```text
+"Hey, we love your work! We can't pay for this initial trial phase, but it will give you massive exposure to our investors. Also, we need it done by tomorrow morning."
+```
+
+This sample is designed to trigger the detector's matching rules and show the severity levels in real time.
+
 ## Database
 
 The SQLite database is automatically created in `backend/db/freelance_shield.db` on first run.

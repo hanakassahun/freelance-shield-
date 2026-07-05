@@ -14,6 +14,7 @@ backend/db/data.json
 .env.*.local
 
 # Build outputs
+
 frontend/dist/
 frontend/build/
 
