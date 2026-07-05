@@ -36,16 +36,18 @@ router.post('/generate', async (req, res) => {
     const userId = 1; // For MVP, use default user
     const clientId = req.body.clientId || null;
 
-    if (clientId) {
+    if (clientId || req.body.blockData) {
       if (isOrmEnabled()) {
         const created = await Contract.create({
           userId,
-          clientId,
+          clientId: clientId || null,
           projectType,
           pricingModel,
           paymentSchedule,
           revisionLimit: revisionLimit || 2,
-          content: contract
+          content: typeof req.body.blockData === 'string'
+            ? req.body.blockData
+            : JSON.stringify(req.body.blockData || contract)
         });
         contract.id = created.id;
       } else {
