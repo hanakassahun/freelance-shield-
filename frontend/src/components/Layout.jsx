@@ -15,6 +15,7 @@ export default function Layout({ children }) {
     { path: '/communications', label: 'Communications', icon: '💬' },
     { path: '/documents', label: 'Documents', icon: '📄' },
     { path: '/contracts', label: 'Contracts', icon: '📝' },
+    { path: '/contract-editor', label: 'Contract Editor', icon: '✍️' },
     { path: '/onboarding', label: 'Onboarding', icon: '✅' },
     { path: '/red-flags', label: 'Red Flags', icon: '🚩' },
   ];
